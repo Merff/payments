@@ -26,6 +26,7 @@ services:
       test: pg_isready -U postgres -d payments
       interval: 2s
       retries: 3
+      start_period: 30s
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
@@ -36,6 +37,7 @@ services:
       test: rabbitmq-diagnostics -q ping
       interval: 2s
       retries: 3
+      start_period: 30s
 
   api:
     <<: *app
@@ -46,6 +48,7 @@ services:
       test: python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
       interval: 2s
       retries: 3
+      start_period: 30s
 
   consumer:
     <<: *app

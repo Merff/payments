@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 from faststream import FastStream
+from faststream.rabbit import Channel
 
 from app.broker import broker, dead_letter_exchange, dead_letter_queue, payments_queue
 from app.db import session_factory
@@ -28,7 +29,7 @@ async def start_outbox_relay() -> None:
     app.on_shutdown(relay.cancel)
 
 
-@broker.subscriber(payments_queue)
+@broker.subscriber(payments_queue, channel=Channel(prefetch_count=10))
 async def process_payment(event: PaymentEvent) -> None:
     async with session_factory() as session:
         payment = await session.get(Payment, event.payment_id, with_for_update=True)
