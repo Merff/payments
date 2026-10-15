@@ -1,3 +1,15 @@
+x-app: &app
+  build: .
+  environment:
+    DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/payments
+    RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    API_KEY: secret
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -13,7 +25,7 @@ services:
     healthcheck:
       test: pg_isready -U postgres -d payments
       interval: 2s
-      retries: 10
+      retries: 3
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
@@ -22,8 +34,25 @@ services:
       - "15672:15672"
     healthcheck:
       test: rabbitmq-diagnostics -q ping
-      interval: 5s
-      retries: 10
+      interval: 2s
+      retries: 3
+
+  api:
+    <<: *app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 2s
+      retries: 3
+
+  consumer:
+    <<: *app
+    command: faststream run app.worker:app
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:

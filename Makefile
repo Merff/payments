@@ -1,10 +1,13 @@
-.PHONY: install up down migrate run worker test lint format
+.PHONY: install up infra down migrate run worker test lint format
 
 install:
 	uv sync
 
 up:
-	docker compose up -d --wait
+	docker compose up -d --build --wait
+
+infra:
+	docker compose up -d --wait postgres rabbitmq
 
 down:
 	docker compose down
