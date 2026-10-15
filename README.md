@@ -2,8 +2,6 @@
 
 Асинхронный сервис процессинга платежей. Принимает запросы на оплату, обрабатывает их через эмуляцию платёжного шлюза и уведомляет клиента о результате через webhook.
 
-Стек: FastAPI, Pydantic v2, SQLAlchemy 2.0 (async), PostgreSQL, RabbitMQ (FastStream), Alembic, Docker.
-
 ## Как это работает
 
 ```
@@ -31,7 +29,7 @@ make up
 
 Поднимаются `postgres`, `rabbitmq`, `api` и `consumer`. Миграции применяются при старте `api`.
 
-- API: http://localhost:8000, документация: http://localhost:8000/docs
+- API: http://localhost:8000/health, документация: http://localhost:8000/docs
 - RabbitMQ UI: http://localhost:15672 (guest / guest)
 
 Остановить:
@@ -66,16 +64,6 @@ curl -X POST http://localhost:8000/api/v1/payments \
 {"payment_id": 1, "status": "pending", "created_at": "2026-10-15T12:58:29.401576"}
 ```
 
-Поля тела:
-
-| Поле | Тип | Обязательное | Ограничения |
-|---|---|---|---|
-| `amount` | decimal | да | больше 0, до 12 цифр, 2 знака после запятой |
-| `currency` | string | да | `RUB`, `USD`, `EUR` |
-| `description` | string | да | до 255 символов |
-| `meta` | object | нет | по умолчанию `{}` |
-| `webhook_url` | string | нет | до 255 символов |
-
 Повтор с тем же `Idempotency-Key` → `422`:
 
 ```json
@@ -107,5 +95,3 @@ curl http://localhost:8000/api/v1/payments/1 -H "X-API-Key: secret"
 ### Webhook
 
 После обработки на `webhook_url` уходит `POST` с телом в том же формате, что ответ `GET /api/v1/payments/{payment_id}`. Таймаут запроса — 3 секунды, любой ответ кроме 2xx считается ошибкой.
-
-Внутри контейнера `localhost` указывает на сам контейнер. Чтобы получить вебхук на своей машине, используйте адрес `host.docker.internal`.
