@@ -16,7 +16,7 @@ class Payment(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     currency: Mapped[str]
     description: Mapped[str]
-    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, server_default="{}")
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
     status: Mapped[str] = mapped_column(default="pending")
     idempotency_key: Mapped[str] = mapped_column(unique=True)
     webhook_url: Mapped[str | None]

@@ -4,6 +4,7 @@ Revision ID: a8f087134ea7
 Revises:
 Create Date: 2026-10-15 14:02:01.548491
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -23,7 +24,7 @@ def upgrade() -> None:
         sa.Column("amount", sa.Numeric(precision=12, scale=2), nullable=False),
         sa.Column("currency", sa.String(), nullable=False),
         sa.Column("description", sa.String(), nullable=False),
-        sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=False),
+        sa.Column("meta", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=False),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("idempotency_key", sa.String(), nullable=False),
         sa.Column("webhook_url", sa.String(), nullable=True),

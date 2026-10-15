@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api import router
 from app.db import SessionDep, engine
 
 
@@ -14,6 +15,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Payments", lifespan=lifespan)
+app.include_router(router)
 
 
 @app.get("/health")
