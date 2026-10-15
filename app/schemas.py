@@ -28,3 +28,7 @@ class PaymentRead(PaymentAccepted):
     meta: dict[str, Any]
     webhook_url: str | None
     processed_at: datetime | None
+
+
+class PaymentEvent(BaseModel):
+    payment_id: int

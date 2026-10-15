@@ -2,20 +2,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import make_url, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db import Base, get_session
+from app.db import Base, engine, session_factory
 from app.main import app
-
-engine = create_async_engine(make_url(settings.database_url).set(database="payments_test"))
-session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
-
-async def get_test_session() -> AsyncIterator[AsyncSession]:
-    async with session_factory() as session:
-        yield session
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -42,9 +34,7 @@ async def session() -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
-    app.dependency_overrides[get_session] = get_test_session
     async with AsyncClient(
         transport=ASGITransport(app), base_url="http://test", headers={"X-API-Key": settings.api_key}
     ) as client:
         yield client
-    app.dependency_overrides.clear()
