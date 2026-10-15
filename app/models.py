@@ -22,3 +22,13 @@ class Payment(Base):
     webhook_url: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.timezone("utc", func.now()))
     processed_at: Mapped[datetime | None]
+
+
+class Outbox(Base):
+    __tablename__ = "outbox"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    queue: Mapped[str]
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.timezone("utc", func.now()))
+    published_at: Mapped[datetime | None]

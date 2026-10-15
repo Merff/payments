@@ -15,5 +15,15 @@ services:
       interval: 2s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      retries: 10
+
 volumes:
   pgdata:

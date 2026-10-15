@@ -1,4 +1,4 @@
-.PHONY: install up down migrate run test lint format
+.PHONY: install up down migrate run worker test lint format
 
 install:
 	uv sync
@@ -14,6 +14,9 @@ migrate:
 
 run:
 	uv run uvicorn app.main:app --reload
+
+worker:
+	uv run faststream run app.worker:app
 
 test:
 	uv run pytest

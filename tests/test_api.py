@@ -2,7 +2,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Payment
+from app.models import Outbox, Payment
 
 URL = "/api/v1/payments"
 PAYLOAD = {
@@ -14,12 +14,15 @@ PAYLOAD = {
 }
 
 
-async def test_create_payment(client: AsyncClient):
+async def test_create_payment(client: AsyncClient, session: AsyncSession):
     response = await client.post(URL, json=PAYLOAD, headers={"Idempotency-Key": "key-1"})
 
     assert response.status_code == 202
     assert response.json().keys() == {"payment_id", "status", "created_at"}
     assert response.json()["status"] == "pending"
+
+    outbox = await session.scalar(select(Outbox))
+    assert (outbox.queue, outbox.payload) == ("payments.new", {"payment_id": response.json()["payment_id"]})
 
 
 async def test_create_payment_with_used_idempotency_key(client: AsyncClient, session: AsyncSession):

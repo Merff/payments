@@ -6,9 +6,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
 from sqlalchemy.dialects.postgresql import insert
 
+from app.broker import payments_queue
 from app.config import settings
 from app.db import SessionDep
-from app.models import Payment
+from app.models import Outbox, Payment
 from app.schemas import PaymentAccepted, PaymentCreate, PaymentRead
 
 
@@ -36,6 +37,7 @@ async def create_payment(
         raise RequestValidationError(
             [{"type": "duplicate", "loc": ("header", "idempotency-key"), "msg": "Idempotency key already used"}]
         )
+    session.add(Outbox(queue=payments_queue.name, payload={"payment_id": payment.id}))
     await session.commit()
     return payment
 
