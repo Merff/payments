@@ -2,8 +2,8 @@ import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Security, status
-from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.broker import payments_queue
@@ -34,9 +34,7 @@ async def create_payment(
         .returning(Payment)
     )
     if payment is None:
-        raise RequestValidationError(
-            [{"type": "duplicate", "loc": ("header", "idempotency-key"), "msg": "Idempotency key already used"}]
-        )
+        return await session.scalar(select(Payment).where(Payment.idempotency_key == idempotency_key))
     session.add(Outbox(queue=payments_queue.name, payload={"payment_id": payment.id}))
     await session.commit()
     return payment

@@ -26,14 +26,15 @@ async def test_create_payment(client: AsyncClient, session: AsyncSession):
     assert (outbox.queue, outbox.payload) == ("payments.new", {"payment_id": response.json()["payment_id"]})
 
 
-# Повторный Idempotency-Key даёт 422 и не создаёт дубль
+# Повторный Idempotency-Key возвращает тот же платёж и не создаёт дубль
 async def test_create_payment_with_used_idempotency_key(client: AsyncClient, session: AsyncSession):
-    await client.post(URL, json=PAYLOAD, headers={"Idempotency-Key": "key-1"})
+    first = await client.post(URL, json=PAYLOAD, headers={"Idempotency-Key": "key-1"})
     response = await client.post(URL, json=PAYLOAD, headers={"Idempotency-Key": "key-1"})
 
-    assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["header", "idempotency-key"]
+    assert response.status_code == 202
+    assert response.json() == first.json()
     assert await session.scalar(select(func.count()).select_from(Payment)) == 1
+    assert await session.scalar(select(func.count()).select_from(Outbox)) == 1
 
 
 # Невалидное тело запроса даёт 422
