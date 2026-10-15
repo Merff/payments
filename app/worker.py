@@ -1,17 +1,25 @@
 import asyncio
 import random
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from faststream import FastStream
 
-from app.broker import broker, payments_queue
+from app.broker import broker, dead_letter_exchange, dead_letter_queue, payments_queue
 from app.db import session_factory
 from app.models import Payment
 from app.outbox import run_outbox_relay
 from app.schemas import PaymentEvent, PaymentRead
 
 app = FastStream(broker)
+
+
+@app.on_startup
+async def declare_dead_letter_queue() -> None:
+    await broker.connect()
+    queue = await broker.declare_queue(dead_letter_queue)
+    await queue.bind(await broker.declare_exchange(dead_letter_exchange))
 
 
 @app.after_startup
@@ -32,8 +40,17 @@ async def process_payment(event: PaymentEvent) -> None:
         await session.commit()
 
     if payment.webhook_url:
-        async with httpx.AsyncClient(timeout=3) as client:
-            response = await client.post(
-                payment.webhook_url, json=PaymentRead.model_validate(payment).model_dump(mode="json")
-            )
-            response.raise_for_status()
+        await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
+
+
+async def send_webhook(url: str, payload: dict[str, Any], attempts: int = 3) -> None:
+    async with httpx.AsyncClient(timeout=3) as client:
+        for attempt in range(attempts):
+            try:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                return
+            except httpx.HTTPError:
+                if attempt == attempts - 1:
+                    raise
+                await asyncio.sleep(2**attempt)

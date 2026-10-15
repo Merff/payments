@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.broker import payments_queue
 from app.models import Payment
-from app.worker import broker
+from app.worker import broker, send_webhook
 
 
 async def create_payment(session: AsyncSession, **values) -> Payment:
@@ -27,6 +27,7 @@ def webhook():
         yield post
 
 
+# Consumer обновляет статус платежа и отправляет вебхук
 @pytest.mark.parametrize(("chance", "status"), [(0.5, "succeeded"), (0.95, "failed")])
 async def test_process_payment(session: AsyncSession, webhook, chance: float, status: str):
     payment = await create_payment(session, webhook_url="http://example.com/webhook")
@@ -44,6 +45,7 @@ async def test_process_payment(session: AsyncSession, webhook, chance: float, st
     assert webhook.call_args.kwargs["json"]["status"] == status
 
 
+# Уже обработанный платёж пропускается без вебхука
 async def test_process_payment_skips_processed(session: AsyncSession, webhook):
     payment = await create_payment(session, status="succeeded", webhook_url="http://example.com/webhook")
 
@@ -51,3 +53,30 @@ async def test_process_payment_skips_processed(session: AsyncSession, webhook):
         await test_broker.publish({"payment_id": payment.id}, queue=payments_queue)
 
     webhook.assert_not_called()
+
+
+# Вебхук доходит с третьей попытки с паузами 1 и 2 секунды
+async def test_webhook_retries():
+    error = httpx.ConnectError("Connection refused")
+    response = httpx.Response(200, request=httpx.Request("POST", "http://example.com/webhook"))
+
+    with (
+        patch("httpx.AsyncClient.post", side_effect=[error, error, response]) as post,
+        patch("asyncio.sleep") as sleep,
+    ):
+        await send_webhook("http://example.com/webhook", {})
+
+    assert post.call_count == 3
+    assert [call.args for call in sleep.call_args_list] == [(1,), (2,)]
+
+
+# После трёх неудачных попыток ошибка пробрасывается
+async def test_webhook_fails_after_retries():
+    with (
+        patch("httpx.AsyncClient.post", side_effect=httpx.ConnectError("Connection refused")) as post,
+        patch("asyncio.sleep"),
+        pytest.raises(httpx.ConnectError),
+    ):
+        await send_webhook("http://example.com/webhook", {})
+
+    assert post.call_count == 3

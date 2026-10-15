@@ -7,6 +7,7 @@ from app.models import Outbox
 from app.outbox import publish_outbox
 
 
+# Событие из outbox публикуется один раз и помечается опубликованным
 async def test_publish_outbox(session: AsyncSession):
     message = Outbox(queue="payments.new", payload={"payment_id": 1})
     session.add(message)
