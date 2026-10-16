@@ -1,4 +1,4 @@
-.PHONY: install up infra down migrate run worker test lint format
+.PHONY: install up infra down migrate run worker webhook test lint format
 
 install:
 	uv sync
@@ -20,6 +20,9 @@ run:
 
 worker:
 	uv run faststream run app.worker:app
+
+webhook:
+	uv run python scripts/webhook.py
 
 test:
 	uv run pytest
