@@ -33,15 +33,18 @@ async def start_outbox_relay() -> None:
 async def process_payment(event: PaymentEvent) -> None:
     async with session_factory() as session:
         payment = await session.get(Payment, event.payment_id, with_for_update=True)
-        if payment is None or payment.status != PaymentStatus.PENDING:
+        if payment is None:
             return
-        await asyncio.sleep(random.uniform(2, 5))
-        payment.status = PaymentStatus.SUCCEEDED if random.random() < 0.9 else PaymentStatus.FAILED
-        payment.processed_at = datetime.now(UTC).replace(tzinfo=None)
-        await session.commit()
+        if payment.status == PaymentStatus.PENDING:
+            await asyncio.sleep(random.uniform(2, 5))
+            payment.status = PaymentStatus.SUCCEEDED if random.random() < 0.9 else PaymentStatus.FAILED
+            payment.processed_at = datetime.now(UTC).replace(tzinfo=None)
+            await session.commit()
 
-    if payment.webhook_url:
-        await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
+        if payment.webhook_url and payment.webhook_sent_at is None:
+            await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
+            payment.webhook_sent_at = datetime.now(UTC).replace(tzinfo=None)
+            await session.commit()
 
 
 async def send_webhook(url: str, payload: dict[str, Any], attempts: int = 3) -> None:

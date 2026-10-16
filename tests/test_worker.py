@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -39,20 +40,36 @@ async def test_process_payment(session: AsyncSession, webhook, chance: float, st
     await session.refresh(payment)
     assert payment.status == status
     assert payment.processed_at is not None
+    assert payment.webhook_sent_at is not None
 
     webhook.assert_called_once()
     assert webhook.call_args.args == ("http://example.com/webhook",)
     assert webhook.call_args.kwargs["json"]["status"] == status
 
 
-# Уже обработанный платёж пропускается без вебхука
+# Уже обработанный платёж с отправленным вебхуком пропускается
 async def test_process_payment_skips_processed(session: AsyncSession, webhook):
-    payment = await create_payment(session, status="succeeded", webhook_url="http://example.com/webhook")
+    payment = await create_payment(
+        session, status="succeeded", webhook_url="http://example.com/webhook", webhook_sent_at=datetime(2026, 1, 1)
+    )
 
     async with TestRabbitBroker(broker) as test_broker:
         await test_broker.publish({"payment_id": payment.id}, queue=payments_queue)
 
     webhook.assert_not_called()
+
+
+# При повторной доставке обработанного платежа без вебхука досылается только вебхук
+async def test_process_payment_resends_webhook(session: AsyncSession, webhook):
+    payment = await create_payment(session, status="failed", webhook_url="http://example.com/webhook")
+
+    async with TestRabbitBroker(broker) as test_broker:
+        await test_broker.publish({"payment_id": payment.id}, queue=payments_queue)
+
+    await session.refresh(payment)
+    assert payment.status == "failed"
+    assert payment.webhook_sent_at is not None
+    assert webhook.call_args.kwargs["json"]["status"] == "failed"
 
 
 # Вебхук доходит с третьей попытки с паузами 1 и 2 секунды
