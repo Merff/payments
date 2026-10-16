@@ -9,7 +9,7 @@ from faststream.rabbit import Channel
 
 from app.broker import broker, dead_letter_exchange, dead_letter_queue, payments_queue
 from app.db import session_factory
-from app.models import Payment
+from app.models import Payment, PaymentStatus
 from app.outbox import run_outbox_relay
 from app.schemas import PaymentEvent, PaymentRead
 
@@ -33,10 +33,10 @@ async def start_outbox_relay() -> None:
 async def process_payment(event: PaymentEvent) -> None:
     async with session_factory() as session:
         payment = await session.get(Payment, event.payment_id, with_for_update=True)
-        if payment is None or payment.status != "pending":
+        if payment is None or payment.status != PaymentStatus.PENDING:
             return
         await asyncio.sleep(random.uniform(2, 5))
-        payment.status = "succeeded" if random.random() < 0.9 else "failed"
+        payment.status = PaymentStatus.SUCCEEDED if random.random() < 0.9 else PaymentStatus.FAILED
         payment.processed_at = datetime.now(UTC).replace(tzinfo=None)
         await session.commit()
 

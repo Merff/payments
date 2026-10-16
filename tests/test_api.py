@@ -60,7 +60,7 @@ async def test_get_payment(client: AsyncClient):
     response = await client.get(f"{URL}/{payment_id}")
 
     assert response.status_code == 200
-    assert response.json() | PAYLOAD == response.json()
+    assert PAYLOAD.items() <= response.json().items()
 
 
 # Несуществующий платёж даёт 404

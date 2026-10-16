@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import Numeric, func
@@ -7,6 +8,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+
+
+class PaymentStatus(StrEnum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 class Payment(Base):
@@ -17,7 +24,7 @@ class Payment(Base):
     currency: Mapped[str]
     description: Mapped[str]
     meta: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
-    status: Mapped[str] = mapped_column(default="pending")
+    status: Mapped[str] = mapped_column(default=PaymentStatus.PENDING)
     idempotency_key: Mapped[str] = mapped_column(unique=True)
     webhook_url: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.timezone("utc", func.now()))
