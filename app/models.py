@@ -29,7 +29,6 @@ class Payment(Base):
     webhook_url: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.timezone("utc", func.now()))
     processed_at: Mapped[datetime | None]
-    webhook_sent_at: Mapped[datetime | None]
 
 
 class Outbox(Base):

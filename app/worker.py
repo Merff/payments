@@ -41,10 +41,8 @@ async def process_payment(event: PaymentEvent) -> None:
             payment.processed_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()
 
-        if payment.webhook_url and payment.webhook_sent_at is None:
-            await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
-            payment.webhook_sent_at = datetime.now(UTC).replace(tzinfo=None)
-            await session.commit()
+    if payment.webhook_url:
+        await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
 
 
 async def send_webhook(url: str, payload: dict[str, Any], attempts: int = 3) -> None:
