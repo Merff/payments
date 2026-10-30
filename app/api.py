@@ -3,13 +3,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 
-from app.broker import payments_queue
+from app import services
 from app.config import settings
 from app.db import SessionDep
-from app.models import Outbox, Payment
+from app.models import Payment
 from app.schemas import PaymentAccepted, PaymentCreate, PaymentRead
 
 
@@ -27,17 +25,10 @@ async def create_payment(
     idempotency_key: Annotated[str, Header(max_length=255)],
     session: SessionDep,
 ) -> Payment:
-    payment = await session.scalar(
-        insert(Payment)
-        .values(**data.model_dump(), idempotency_key=idempotency_key)
-        .on_conflict_do_nothing(index_elements=[Payment.idempotency_key])
-        .returning(Payment)
-    )
-    if payment is None:
-        return await session.scalar(select(Payment).where(Payment.idempotency_key == idempotency_key))
-    session.add(Outbox(queue=payments_queue.name, payload={"payment_id": payment.id}))
-    await session.commit()
-    return payment
+    try:
+        return await services.create_payment(session, data, idempotency_key)
+    except services.IdempotencyConflict:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Idempotency-Key already used with a different request") from None
 
 
 @router.get("/{payment_id}", response_model=PaymentRead)

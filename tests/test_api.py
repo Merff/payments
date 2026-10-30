@@ -37,6 +37,14 @@ async def test_create_payment_with_used_idempotency_key(client: AsyncClient, ses
     assert await session.scalar(select(func.count()).select_from(Outbox)) == 1
 
 
+# Повторный Idempotency-Key с другим телом запроса даёт 409
+async def test_create_payment_with_used_idempotency_key_and_other_payload(client: AsyncClient):
+    await client.post(URL, json=PAYLOAD, headers={"Idempotency-Key": "key-1"})
+    response = await client.post(URL, json=PAYLOAD | {"amount": "200"}, headers={"Idempotency-Key": "key-1"})
+
+    assert response.status_code == 409
+
+
 # Невалидное тело запроса даёт 422
 async def test_create_payment_with_invalid_payload(client: AsyncClient):
     response = await client.post(URL, json=PAYLOAD | {"amount": "-1"}, headers={"Idempotency-Key": "key-1"})

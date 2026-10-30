@@ -1,26 +1,30 @@
 import asyncio
-import random
-from datetime import UTC, datetime
+import logging
 from typing import Any
 
 import httpx
 from faststream import FastStream
 from faststream.rabbit import Channel
+from faststream.rabbit.annotations import RabbitMessage
 
-from app.broker import broker, dead_letter_exchange, dead_letter_queue, payments_queue
+from app import services
+from app.broker import broker, dead_letter_exchange, dead_letter_queue, payments_queue, retry_queues
 from app.db import session_factory
-from app.models import Payment, PaymentStatus
 from app.outbox import run_outbox_relay
 from app.schemas import PaymentEvent, PaymentRead
+
+logger = logging.getLogger(__name__)
 
 app = FastStream(broker)
 
 
 @app.on_startup
-async def declare_dead_letter_queue() -> None:
+async def declare_queues() -> None:
     await broker.connect()
     queue = await broker.declare_queue(dead_letter_queue)
     await queue.bind(await broker.declare_exchange(dead_letter_exchange))
+    for retry_queue in retry_queues:
+        await broker.declare_queue(retry_queue)
 
 
 @app.after_startup
@@ -30,29 +34,28 @@ async def start_outbox_relay() -> None:
 
 
 @broker.subscriber(payments_queue, channel=Channel(prefetch_count=10))
-async def process_payment(event: PaymentEvent) -> None:
-    async with session_factory() as session:
-        payment = await session.get(Payment, event.payment_id, with_for_update=True)
-        if payment is None:
-            return
-        if payment.status == PaymentStatus.PENDING:
-            await asyncio.sleep(random.uniform(2, 5))
-            payment.status = PaymentStatus.SUCCEEDED if random.random() < 0.9 else PaymentStatus.FAILED
-            payment.processed_at = datetime.now(UTC).replace(tzinfo=None)
-            await session.commit()
+async def handle_payment(event: PaymentEvent, message: RabbitMessage) -> None:
+    try:
+        async with session_factory() as session:
+            payment = await services.process_payment(session, event.payment_id)
+            if payment and payment.webhook_url and payment.webhook_sent_at is None:
+                await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
+                await services.mark_webhook_sent(session, payment)
+    except Exception:
+        retries = message.headers.get("x-retries", 0)
+        if retries >= len(retry_queues):
+            raise
+        logger.warning("Payment %s processing failed, retry %s", event.payment_id, retries + 1, exc_info=True)
+        try:
+            await broker.publish(
+                event.model_dump(), queue=retry_queues[retries], headers={"x-retries": retries + 1}, persist=True
+            )
+        except Exception:
+            logger.exception("Payment %s retry publishing failed, requeue", event.payment_id)
+            await message.nack(requeue=True)
 
-    if payment.webhook_url:
-        await send_webhook(payment.webhook_url, PaymentRead.model_validate(payment).model_dump(mode="json"))
 
-
-async def send_webhook(url: str, payload: dict[str, Any], attempts: int = 3) -> None:
+async def send_webhook(url: str, payload: dict[str, Any]) -> None:
     async with httpx.AsyncClient(timeout=3) as client:
-        for attempt in range(attempts):
-            try:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                return
-            except httpx.HTTPError:
-                if attempt == attempts - 1:
-                    raise
-                await asyncio.sleep(2**attempt)
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
